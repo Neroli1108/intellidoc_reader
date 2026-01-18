@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  :root {
+    /* Light theme variables */
+    --color-bg-primary: #fafafa;
+    --color-bg-secondary: #ffffff;
+    --color-bg-tertiary: #f5f5f4;
+    --color-text-primary: #1c1917;
+    --color-text-secondary: #57534e;
+    --color-text-muted: #a8a29e;
+    --color-border: #e7e5e4;
+    --color-accent: #6366f1;
+    --color-accent-hover: #4f46e5;
+  }
+
+  .dark {
+    /* Dark theme variables */
+    --color-bg-primary: #0c0a09;
+    --color-bg-secondary: #1c1917;
+    --color-bg-tertiary: #292524;
+    --color-text-primary: #fafaf9;
+    --color-text-secondary: #a8a29e;
+    --color-text-muted: #78716c;
+    --color-border: #44403c;
+    --color-accent: #818cf8;
+    --color-accent-hover: #6366f1;
+  }
+
+  body {
+    @apply bg-stone-50 dark:bg-stone-950;
+    @apply text-stone-900 dark:text-stone-100;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-stone-300 dark:bg-stone-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-stone-400 dark:bg-stone-600;
+  }
+
+  /* Selection highlighting */
+  ::selection {
+    @apply bg-indigo-500/30;
+  }
+}
+
+@layer components {
+  /* Panel styles */
+  .panel {
+    @apply bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-lg shadow-sm;
+  }
+
+  /* Button variants */
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-indigo-600 hover:bg-indigo-700 text-white;
+    @apply dark:bg-indigo-500 dark:hover:bg-indigo-600;
+  }
+
+  .btn-secondary {
+    @apply btn bg-stone-100 hover:bg-stone-200 text-stone-900;
+    @apply dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-100;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-stone-100 text-stone-700;
+    @apply dark:hover:bg-stone-800 dark:text-stone-300;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700;
+    @apply bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100;
+    @apply placeholder:text-stone-400 dark:placeholder:text-stone-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent;
+  }
+
+  /* Highlight colors for annotations */
+  .highlight-yellow {
+    background-color: rgba(250, 204, 21, 0.4);
+  }
+
+  .highlight-green {
+    background-color: rgba(34, 197, 94, 0.4);
+  }
+
+  .highlight-blue {
+    background-color: rgba(59, 130, 246, 0.4);
+  }
+
+  .highlight-purple {
+    background-color: rgba(168, 85, 247, 0.4);
+  }
+
+  .highlight-red {
+    background-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* Note indicator */
+  .note-indicator {
+    @apply absolute -right-6 top-0 w-4 h-4 rounded-full bg-amber-400 dark:bg-amber-500;
+    @apply flex items-center justify-center text-[10px] text-white font-bold;
+    @apply cursor-pointer hover:scale-110 transition-transform;
+  }
+
+  /* Animated gradient background */
+  .gradient-bg {
+    background: linear-gradient(
+      135deg,
+      #667eea 0%,
+      #764ba2 50%,
+      #f093fb 100%
+    );
+    background-size: 200% 200%;
+    animation: gradient-shift 15s ease infinite;
+  }
+
+  @keyframes gradient-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Code block styling */
+  .code-block {
+    @apply bg-stone-900 dark:bg-stone-950 text-stone-100 rounded-lg p-4 overflow-x-auto;
+    @apply font-mono text-sm;
+    @apply border border-stone-800;
+  }
+
+  /* Chat message bubbles */
+  .chat-bubble {
+    @apply max-w-[85%] p-3 rounded-2xl;
+  }
+
+  .chat-bubble-user {
+    @apply chat-bubble bg-indigo-600 text-white ml-auto rounded-br-md;
+  }
+
+  .chat-bubble-assistant {
+    @apply chat-bubble bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 mr-auto rounded-bl-md;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs font-medium text-white bg-stone-900 rounded shadow-lg;
+    @apply opacity-0 invisible transition-all duration-200;
+    @apply transform -translate-x-1/2 -translate-y-full -mt-2;
+  }
+
+  .tooltip-trigger:hover .tooltip {
+    @apply opacity-100 visible;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply w-5 h-5 border-2 border-stone-300 border-t-indigo-600 rounded-full animate-spin;
+  }
+
+  /* Document page container */
+  .document-page {
+    @apply bg-white dark:bg-stone-900 shadow-md rounded-lg p-8 mx-auto my-4;
+    @apply max-w-3xl;
+    @apply prose dark:prose-invert prose-stone max-w-none;
+  }
+}
+
+@layer utilities {
+  /* Custom utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Drag region for window */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}

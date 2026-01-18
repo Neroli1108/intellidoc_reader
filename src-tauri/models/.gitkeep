@@ -1,0 +1,16 @@
+# Local LLM Models Directory
+#
+# Place your GGUF model files here. Recommended models:
+#
+# For Q&A / Professor Mode:
+# - mistral-7b-instruct-v0.2.Q4_K_M.gguf (~4.4GB)
+# - llama-3.2-3b-instruct.Q4_K_M.gguf (~2.0GB)
+# - phi-3-mini-4k-instruct.Q4_K_M.gguf (~2.4GB)
+#
+# For Code Generation:
+# - codellama-7b-instruct.Q4_K_M.gguf (~4.0GB)
+# - deepseek-coder-6.7b-instruct.Q4_K_M.gguf (~4.0GB)
+#
+# Download from: https://huggingface.co/
+#
+# Model files are ignored by git due to their large size.
