@@ -5,10 +5,13 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  Highlighter,
   StickyNote,
   MessageSquare,
+  Play,
+  Volume2,
 } from "lucide-react";
+import { useVoiceReadingStore, parseSentences, Sentence } from "../stores/voiceReadingStore";
+import { ReadingControls } from "./ReadingControls";
 
 interface Document {
   id: string;
@@ -52,7 +55,7 @@ const HIGHLIGHT_COLORS = [
   { name: "red", class: "bg-red-300/40", css: "rgba(239, 68, 68, 0.4)" },
 ];
 
-export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
+export function DocumentViewer({ document, annotations: _annotations }: DocumentViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [selection, setSelection] = useState<{
@@ -62,10 +65,68 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
     rect: DOMRect;
   } | null>(null);
   const [showAnnotationPopup, setShowAnnotationPopup] = useState(false);
+  const [showReadingControls, setShowReadingControls] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const sentenceRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
 
+  // Voice reading store
+  const {
+    status,
+    currentSentenceIndex,
+    sentences,
+    setSentences,
+    startReading,
+    jumpToSentence: _jumpToSentence,
+    initializeListeners,
+    cleanup,
+  } = useVoiceReadingStore();
+
+  const isReading = status === "playing" || status === "paused";
   const totalPages = document.metadata.page_count || document.pages.length;
   const currentPageData = document.pages[currentPage - 1];
+
+  // Parse sentences from current page
+  useEffect(() => {
+    if (currentPageData) {
+      const allSentences: Sentence[] = [];
+      currentPageData.paragraphs.forEach((paragraph) => {
+        const paragraphSentences = parseSentences(paragraph.text, paragraph.id);
+        allSentences.push(...paragraphSentences);
+      });
+      setSentences(allSentences);
+    }
+  }, [currentPageData, setSentences]);
+
+  // Initialize event listeners for reading position updates
+  useEffect(() => {
+    let unlistenFns: (() => void)[] = [];
+
+    const setup = async () => {
+      unlistenFns = await initializeListeners();
+    };
+
+    setup();
+
+    return () => {
+      unlistenFns.forEach((fn) => fn());
+      cleanup();
+    };
+  }, [initializeListeners, cleanup]);
+
+  // Auto-scroll to current sentence during reading
+  useEffect(() => {
+    if (currentSentenceIndex >= 0 && sentences[currentSentenceIndex]) {
+      const sentenceId = sentences[currentSentenceIndex].id;
+      const element = sentenceRefs.current.get(sentenceId);
+      
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }
+  }, [currentSentenceIndex, sentences]);
 
   // Handle text selection
   const handleMouseUp = useCallback(() => {
@@ -83,13 +144,32 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
 
       setSelection({
         text,
-        start: 0, // Would need proper offset calculation
+        start: 0,
         end: text.length,
         rect,
       });
       setShowAnnotationPopup(true);
     }
   }, []);
+
+  // Handle sentence click to start reading from that point
+  const handleSentenceClick = useCallback(
+    async (sentenceIndex: number) => {
+      if (!showReadingControls) {
+        setShowReadingControls(true);
+      }
+      
+      // Start reading from this sentence
+      await startReading(document.id, "", sentenceIndex);
+    },
+    [document.id, showReadingControls, startReading]
+  );
+
+  // Start reading from current position
+  const handleStartReading = useCallback(async () => {
+    setShowReadingControls(true);
+    await startReading(document.id, "", 0);
+  }, [document.id, startReading]);
 
   // Add highlight
   const handleAddHighlight = async (color: string) => {
@@ -106,7 +186,6 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
         note: null,
       });
 
-      // Clear selection
       window.getSelection()?.removeAllRanges();
       setSelection(null);
       setShowAnnotationPopup(false);
@@ -144,7 +223,6 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
   // Ask AI about selection
   const handleAskAI = async () => {
     if (!selection) return;
-    // This would trigger the chat panel with the selected text as context
     console.log("Ask AI about:", selection.text);
   };
 
@@ -161,6 +239,49 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentPage, totalPages]);
+
+  // Store ref for a sentence element
+  const setSentenceRef = useCallback((id: string, el: HTMLSpanElement | null) => {
+    if (el) {
+      sentenceRefs.current.set(id, el);
+    } else {
+      sentenceRefs.current.delete(id);
+    }
+  }, []);
+
+  // Render paragraph with sentences wrapped for highlighting
+  const renderParagraphWithSentences = (paragraph: Paragraph, _paragraphIndex: number) => {
+    const paragraphSentences = parseSentences(paragraph.text, paragraph.id);
+    
+    // Track the global sentence index for this paragraph
+    let globalSentenceStartIndex = 0;
+    for (let i = 0; i < currentPageData.paragraphs.length; i++) {
+      if (currentPageData.paragraphs[i].id === paragraph.id) break;
+      globalSentenceStartIndex += parseSentences(
+        currentPageData.paragraphs[i].text,
+        currentPageData.paragraphs[i].id
+      ).length;
+    }
+
+    return paragraphSentences.map((sentence, localIndex) => {
+      const globalIndex = globalSentenceStartIndex + localIndex;
+      const isActive = globalIndex === currentSentenceIndex && isReading;
+      
+      return (
+        <span
+          key={sentence.id}
+          ref={(el) => setSentenceRef(sentence.id, el)}
+          data-sentence-id={sentence.id}
+          data-sentence-index={globalIndex}
+          className={`sentence reading-clickable ${isActive ? "reading-active" : ""}`}
+          onClick={() => handleSentenceClick(globalIndex)}
+          title="Click to read from here"
+        >
+          {sentence.text}{" "}
+        </span>
+      );
+    });
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-stone-100 dark:bg-stone-950">
@@ -187,6 +308,27 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Read aloud button */}
+          <button
+            onClick={handleStartReading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition-colors"
+            title="Read aloud"
+          >
+            {isReading ? (
+              <>
+                <Volume2 className="w-4 h-4" />
+                Reading...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Read Aloud
+              </>
+            )}
+          </button>
+
+          <div className="w-px h-6 bg-stone-200 dark:bg-stone-700" />
+
           <button
             onClick={() => setZoom((z) => Math.max(50, z - 10))}
             className="p-1.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
@@ -223,15 +365,7 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
                   className="relative mb-4 leading-relaxed"
                   data-paragraph-id={paragraph.id}
                 >
-                  {renderTextWithHighlights(
-                    paragraph.text,
-                    annotations.filter(
-                      (a) =>
-                        a.page_number === currentPage &&
-                        a.selected_text &&
-                        paragraph.text.includes(a.selected_text)
-                    )
-                  )}
+                  {renderParagraphWithSentences(paragraph, index)}
                 </p>
               ))}
               {currentPageData.paragraphs.length === 0 && (
@@ -289,12 +423,20 @@ export function DocumentViewer({ document, annotations }: DocumentViewerProps) {
           </div>
         </div>
       )}
+
+      {/* Reading controls bar */}
+      {showReadingControls && (
+        <ReadingControls
+          documentId={document.id}
+          onClose={() => setShowReadingControls(false)}
+        />
+      )}
     </div>
   );
 }
 
-// Render text with highlighted portions
-function renderTextWithHighlights(
+// Render text with highlighted portions (for annotations)
+function _renderTextWithHighlights(
   text: string,
   annotations: Annotation[]
 ): React.ReactNode {
@@ -302,7 +444,6 @@ function renderTextWithHighlights(
     return text;
   }
 
-  // Find and highlight matching text
   let result: React.ReactNode[] = [];
   let lastIndex = 0;
 
@@ -312,12 +453,10 @@ function renderTextWithHighlights(
     const index = text.indexOf(annotation.selected_text, lastIndex);
     if (index === -1) return;
 
-    // Add text before highlight
     if (index > lastIndex) {
       result.push(text.slice(lastIndex, index));
     }
 
-    // Add highlighted text
     const colorClass = `highlight-${annotation.highlight_color || "yellow"}`;
     result.push(
       <span
@@ -335,7 +474,6 @@ function renderTextWithHighlights(
     lastIndex = index + annotation.selected_text.length;
   });
 
-  // Add remaining text
   if (lastIndex < text.length) {
     result.push(text.slice(lastIndex));
   }

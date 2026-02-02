@@ -7,3 +7,4 @@ pub mod document;
 pub mod annotation;
 pub mod llm;
 pub mod editor;
+pub mod voice;

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   X,
   Send,
   Bot,
-  User,
   GraduationCap,
   Zap,
   FileText,
@@ -12,7 +12,12 @@ import {
   Loader2,
   Copy,
   Check,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { useVoiceReadingStore } from "../stores/voiceReadingStore";
 
 interface Document {
   id: string;
@@ -46,8 +51,13 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState<"quick" | "explain">("explain");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [speakResponses, setSpeakResponses] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Voice reading store for pausing during Q&A
+  const { status: readingStatus, pauseReading, resumeReading } = useVoiceReadingStore();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -59,8 +69,88 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
     inputRef.current?.focus();
   }, []);
 
+  // Listen for voice transcription events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setup = async () => {
+      unlisten = await listen<{ text: string; is_final: boolean }>(
+        "voice:transcription",
+        (event) => {
+          if (event.payload.is_final && event.payload.text.trim()) {
+            setInput((prev) => prev + event.payload.text + " ");
+          }
+        }
+      );
+    };
+
+    if (isListening) {
+      setup();
+    }
+
+    return () => {
+      unlisten?.();
+    };
+  }, [isListening]);
+
+  // Toggle voice listening
+  const toggleVoiceListening = async () => {
+    if (isListening) {
+      // Stop listening
+      try {
+        await invoke("stop_voice_listening");
+      } catch (error) {
+        console.error("Failed to stop listening:", error);
+      }
+      setIsListening(false);
+    } else {
+      // Pause reading if in progress
+      if (readingStatus === "playing") {
+        await pauseReading();
+      }
+      
+      // Start listening
+      try {
+        await invoke("start_voice_listening", {
+          sessionId: `chat-${Date.now()}`,
+        });
+        setIsListening(true);
+      } catch (error) {
+        console.error("Failed to start listening:", error);
+      }
+    }
+  };
+
+  // Speak text using TTS
+  const speakText = async (text: string) => {
+    if (!speakResponses) return;
+    
+    try {
+      // Strip markdown formatting for cleaner speech
+      const cleanText = text
+        .replace(/\*\*/g, "")
+        .replace(/```[\s\S]*?```/g, "code block")
+        .replace(/`[^`]*`/g, "code");
+      
+      await invoke("speak_text", { text: cleanText });
+    } catch (error) {
+      console.error("Failed to speak:", error);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    // Stop listening if active
+    if (isListening) {
+      await toggleVoiceListening();
+    }
+
+    // Pause reading during Q&A
+    const wasReading = readingStatus === "playing";
+    if (wasReading) {
+      await pauseReading();
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -97,6 +187,14 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Speak the response
+      await speakText(response.answer);
+
+      // Resume reading after response if it was playing before
+      if (wasReading) {
+        await resumeReading();
+      }
     } catch (error) {
       console.error("Failed to query LLM:", error);
       const errorMessage: ChatMessage = {
@@ -291,13 +389,52 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
 
       {/* Input */}
       <div className="p-4 border-t border-stone-200 dark:border-stone-800">
+        {/* Voice controls */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleVoiceListening}
+              className={`p-2 rounded-lg transition-colors ${
+                isListening
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  : "bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-400"
+              }`}
+              title={isListening ? "Stop listening" : "Start voice input"}
+            >
+              {isListening ? (
+                <MicOff className="w-4 h-4" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+            </button>
+            {isListening && (
+              <span className="text-xs text-red-500 font-medium">Listening...</span>
+            )}
+          </div>
+          <button
+            onClick={() => setSpeakResponses(!speakResponses)}
+            className={`p-2 rounded-lg transition-colors ${
+              speakResponses
+                ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-400"
+            }`}
+            title={speakResponses ? "Voice responses on" : "Voice responses off"}
+          >
+            {speakResponses ? (
+              <Volume2 className="w-4 h-4" />
+            ) : (
+              <VolumeX className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+
         <div className="relative">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the document..."
+            placeholder={isListening ? "Speak your question..." : "Ask about the document..."}
             rows={2}
             className="w-full px-4 py-3 pr-12 text-sm rounded-xl bg-stone-100 dark:bg-stone-800 border border-transparent focus:border-indigo-500 focus:bg-white dark:focus:bg-stone-900 outline-none resize-none transition-all"
           />
@@ -310,7 +447,7 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
           </button>
         </div>
         <p className="mt-2 text-xs text-stone-400 dark:text-stone-500 text-center">
-          Press Enter to send, Shift+Enter for new line
+          {isListening ? "Speak or type your question" : "Press Enter to send, Shift+Enter for new line"}
         </p>
       </div>
     </aside>

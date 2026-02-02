@@ -190,6 +190,69 @@
     @apply max-w-3xl;
     @apply prose dark:prose-invert prose-stone max-w-none;
   }
+
+  /* Voice Reading - Sentence highlighting */
+  .sentence {
+    @apply cursor-pointer transition-all duration-200 rounded-sm;
+    padding: 1px 2px;
+    margin: -1px -2px;
+  }
+
+  .sentence:hover {
+    @apply bg-indigo-500/10;
+  }
+
+  .sentence.reading-active {
+    @apply bg-indigo-500/25;
+    animation: reading-pulse 1.5s ease-in-out infinite;
+  }
+
+  .sentence.reading-clickable {
+    @apply cursor-pointer;
+  }
+
+  .sentence.reading-clickable:hover {
+    @apply bg-indigo-500/15 underline decoration-indigo-400 decoration-2 underline-offset-2;
+  }
+
+  @keyframes reading-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  /* Reading controls animation */
+  .animate-slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 20px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 @layer utilities {
