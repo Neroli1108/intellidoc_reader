@@ -2,12 +2,19 @@
 
 use intellidoc_reader_lib::document::{parser, DocumentType};
 use intellidoc_reader_lib::llm::providers::{create_client, LLMProvider, ProviderConfig};
+use std::env;
+
+/// Get a cross-platform temp file path
+fn temp_path(filename: &str) -> String {
+    let temp_dir = env::temp_dir();
+    temp_dir.join(filename).to_string_lossy().to_string()
+}
 
 #[tokio::test]
 async fn test_parse_markdown_file() {
     // Create a temp markdown file
-    let temp_path = "/tmp/test_doc.md";
-    std::fs::write(temp_path, r#"# Test Document
+    let test_path = temp_path("test_doc.md");
+    std::fs::write(&test_path, r#"# Test Document
 
 This is a test paragraph.
 
@@ -16,7 +23,7 @@ This is a test paragraph.
 More content here with some words to count.
 "#).unwrap();
 
-    let doc = parser::parse_document(temp_path).await.unwrap();
+    let doc = parser::parse_document(&test_path).await.unwrap();
 
     assert_eq!(doc.doc_type, DocumentType::Markdown);
     assert!(!doc.pages.is_empty());
@@ -24,21 +31,21 @@ More content here with some words to count.
     println!("✓ Markdown parsing works: {} words, {} pages",
              doc.metadata.word_count, doc.metadata.page_count);
 
-    std::fs::remove_file(temp_path).ok();
+    std::fs::remove_file(&test_path).ok();
 }
 
 #[tokio::test]
 async fn test_parse_text_file() {
-    let temp_path = "/tmp/test_doc.txt";
-    std::fs::write(temp_path, "Hello world. This is a test document with multiple sentences.").unwrap();
+    let test_path = temp_path("test_doc.txt");
+    std::fs::write(&test_path, "Hello world. This is a test document with multiple sentences.").unwrap();
 
-    let doc = parser::parse_document(temp_path).await.unwrap();
+    let doc = parser::parse_document(&test_path).await.unwrap();
 
     assert_eq!(doc.doc_type, DocumentType::Txt);
     assert!(!doc.pages.is_empty());
     println!("✓ Text parsing works: {} words", doc.metadata.word_count);
 
-    std::fs::remove_file(temp_path).ok();
+    std::fs::remove_file(&test_path).ok();
 }
 
 #[tokio::test]
@@ -65,13 +72,13 @@ async fn test_openai_client_creation() {
 #[tokio::test]
 async fn test_document_category_detection() {
     // Test category detection from content
-    let temp_path = "/tmp/tech_doc.txt";
-    std::fs::write(temp_path, "This paper discusses machine learning algorithms and neural networks.").unwrap();
+    let test_path = temp_path("tech_doc.txt");
+    std::fs::write(&test_path, "This paper discusses machine learning algorithms and neural networks.").unwrap();
 
-    let doc = parser::parse_document(temp_path).await.unwrap();
+    let doc = parser::parse_document(&test_path).await.unwrap();
     println!("✓ Category detection: {:?}", doc.category);
 
-    std::fs::remove_file(temp_path).ok();
+    std::fs::remove_file(&test_path).ok();
 }
 
 #[test]
@@ -136,10 +143,10 @@ fn test_editor_basic() {
     use intellidoc_reader_lib::document::editor::{TextEditor, DocumentEditor};
 
     // Create a temp file for testing
-    let temp_path = "/tmp/editor_test.txt";
-    std::fs::write(temp_path, "Initial content").unwrap();
+    let test_path = temp_path("editor_test.txt");
+    std::fs::write(&test_path, "Initial content").unwrap();
 
-    let editor = TextEditor::new(temp_path).unwrap();
+    let editor = TextEditor::new(&test_path).unwrap();
 
     assert_eq!(editor.get_content(), "Initial content");
     assert!(!editor.has_unsaved_changes());
@@ -148,7 +155,7 @@ fn test_editor_basic() {
     println!("✓ Text editor creation and basic operations work");
 
     // Cleanup
-    std::fs::remove_file(temp_path).ok();
+    std::fs::remove_file(&test_path).ok();
 }
 
 #[test]
