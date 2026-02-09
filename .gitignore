@@ -33,9 +33,6 @@ Thumbs.db
 # Tauri
 src-tauri/target/
 src-tauri/WixTools/
-src-tauri/icons/*.ico
-src-tauri/icons/*.png
-!src-tauri/icons/.gitkeep
 
 # Local LLM models (large files)
 src-tauri/models/*.gguf
