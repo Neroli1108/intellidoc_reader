@@ -18,6 +18,22 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 /// Initialize and run the Tauri application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load environment variables from .env file
+    // Try current directory first, then walk up to find it
+    if dotenvy::dotenv().is_err() {
+        // Try explicit paths for common Tauri dev/prod scenarios
+        let candidates = [
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env"),
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env"),
+        ];
+        for path in &candidates {
+            if path.exists() {
+                let _ = dotenvy::from_path(path);
+                break;
+            }
+        }
+    }
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -28,11 +44,21 @@ pub fn run() {
 
     tracing::info!("Starting IntelliDoc Reader...");
 
+    // Log LLM config status
+    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+        if !key.is_empty() {
+            tracing::info!("OpenAI API key found ({}...)", &key[..key.len().min(8)]);
+        }
+    } else {
+        tracing::warn!("No OPENAI_API_KEY found in environment. Set it in .env or LLM Settings.");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(commands::editor::EditorManager::new())
         .manage(commands::voice::VoiceManagerState::new())
+        .manage(commands::llm::LLMState::new())
         .setup(|app| {
             // Initialize storage on startup
             let app_handle = app.handle().clone();
@@ -49,14 +75,14 @@ pub fn run() {
             commands::document::get_document_content,
             commands::document::get_document_metadata,
             commands::document::get_recent_documents,
-            
+
             // Annotation commands
             commands::annotation::add_annotation,
             commands::annotation::get_annotations,
             commands::annotation::update_annotation,
             commands::annotation::delete_annotation,
             commands::annotation::export_annotations,
-            
+
             // LLM commands
             commands::llm::query_llm,
             commands::llm::explain_text,
@@ -66,7 +92,8 @@ pub fn run() {
             commands::llm::get_provider_models,
             commands::llm::set_llm_config,
             commands::llm::get_llm_config,
-            
+            commands::llm::test_llm_connection,
+
             // Document Editor commands
             commands::editor::open_editor,
             commands::editor::close_editor,
@@ -98,7 +125,8 @@ pub fn run() {
             commands::editor::convert_docx_to_pdf,
             commands::editor::convert_latex_to_pdf,
             commands::editor::convert_txt_to_markdown,
-            
+            commands::editor::compile_to_pdf,
+
             // Voice commands
             commands::voice::get_voice_config,
             commands::voice::set_voice_config,

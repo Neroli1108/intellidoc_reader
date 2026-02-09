@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-type LLMProvider = "local" | "ollama" | "openai" | "gemini" | "anthropic" | "groq" | "custom";
+type LLMProvider = "local" | "ollama" | "openai" | "gemini" | "anthropic" | "groq" | "bedrock" | "custom";
 
 interface LLMConfig {
   provider: LLMProvider;
@@ -35,6 +35,11 @@ interface SettingsStore {
   defaultEditorTool: string;
   editorStrokeWidth: number;
   editorFontSize: number;
+
+  // Code Editor
+  vimModeEnabled: boolean;
+  autoCompleteEnabled: boolean;
+  showVimShortcuts: boolean;
   
   // Actions
   toggleTheme: () => void;
@@ -51,6 +56,10 @@ interface SettingsStore {
   setDefaultEditorTool: (tool: string) => void;
   setEditorStrokeWidth: (width: number) => void;
   setEditorFontSize: (size: number) => void;
+  setVimModeEnabled: (enabled: boolean) => void;
+  setAutoCompleteEnabled: (enabled: boolean) => void;
+  setShowVimShortcuts: (show: boolean) => void;
+  toggleVimMode: () => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -65,8 +74,8 @@ export const useSettingsStore = create<SettingsStore>()(
       defaultHighlightColor: "yellow",
       autoSaveAnnotations: true,
       llmConfig: {
-        provider: "local",
-        model: "mistral-7b-instruct",
+        provider: "openai",
+        model: "gpt-4o-mini",
         apiKey: null,
         apiUrl: null,
         maxTokens: 2048,
@@ -77,6 +86,9 @@ export const useSettingsStore = create<SettingsStore>()(
       defaultEditorTool: "select",
       editorStrokeWidth: 2,
       editorFontSize: 12,
+      vimModeEnabled: false,
+      autoCompleteEnabled: true,
+      showVimShortcuts: false,
       
       // Actions
       toggleTheme: () => set((state) => ({
@@ -98,6 +110,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setDefaultEditorTool: (defaultEditorTool) => set({ defaultEditorTool }),
       setEditorStrokeWidth: (editorStrokeWidth) => set({ editorStrokeWidth }),
       setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
+      setVimModeEnabled: (vimModeEnabled) => set({ vimModeEnabled }),
+      setAutoCompleteEnabled: (autoCompleteEnabled) => set({ autoCompleteEnabled }),
+      setShowVimShortcuts: (showVimShortcuts) => set({ showVimShortcuts }),
+      toggleVimMode: () => set((state) => ({ vimModeEnabled: !state.vimModeEnabled })),
     }),
     {
       name: "intellidoc-settings",

@@ -171,6 +171,16 @@ pub async fn get_recent_documents(
                 id: row.get(0)?,
                 title: row.get(1)?,
                 path: row.get(2)?,
+                doc_type: {
+                    let p: String = row.get(2)?;
+                    crate::document::DocumentType::from_extension(
+                        std::path::Path::new(&p)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("txt"),
+                    )
+                    .unwrap_or(crate::document::DocumentType::Txt)
+                },
                 category: serde_json::from_str(&row.get::<_, String>(3)?)
                     .unwrap_or_default(),
                 last_opened: row.get(4)?,
@@ -326,6 +336,95 @@ pub async fn delete_annotation(app: &AppHandle, id: Uuid) -> Result<(), AppError
 
     conn.execute("DELETE FROM annotations WHERE id = ?1", [id.to_string()])
         .map_err(|e| StorageError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Save a chat message
+pub async fn save_chat_message(
+    app: &AppHandle,
+    document_id: &str,
+    role: &str,
+    content: &str,
+    context_page: Option<u32>,
+) -> Result<(), AppError> {
+    let db = app.state::<Database>();
+    let conn = db.conn.lock().unwrap();
+
+    let id = Uuid::new_v4().to_string();
+
+    conn.execute(
+        r#"
+        INSERT INTO chat_messages (id, document_id, role, content, context_page)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+        params![id, document_id, role, content, context_page],
+    )
+    .map_err(|e| StorageError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Get chat messages for a document
+pub async fn get_chat_messages(
+    app: &AppHandle,
+    document_id: &str,
+    limit: usize,
+) -> Result<Vec<(String, String, String, String)>, AppError> {
+    let db = app.state::<Database>();
+    let conn = db.conn.lock().unwrap();
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT id, role, content, timestamp
+            FROM chat_messages
+            WHERE document_id = ?1
+            ORDER BY timestamp ASC
+            LIMIT ?2
+            "#,
+        )
+        .map_err(|e| StorageError::Database(e.to_string()))?;
+
+    let messages = stmt
+        .query_map(params![document_id, limit], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|e| StorageError::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(messages)
+}
+
+/// Save a code snippet
+pub async fn save_code_snippet(
+    app: &AppHandle,
+    document_id: &str,
+    language: &str,
+    framework: Option<&str>,
+    code: &str,
+    description: &str,
+    section_reference: Option<&str>,
+) -> Result<(), AppError> {
+    let db = app.state::<Database>();
+    let conn = db.conn.lock().unwrap();
+
+    let id = Uuid::new_v4().to_string();
+
+    conn.execute(
+        r#"
+        INSERT INTO code_snippets (id, document_id, language, framework, code, description, section_reference)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+        params![id, document_id, language, framework, code, description, section_reference],
+    )
+    .map_err(|e| StorageError::Database(e.to_string()))?;
 
     Ok(())
 }

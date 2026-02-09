@@ -2,7 +2,9 @@
 name = "intellidoc-reader"
 version = "0.1.0"
 description = "A fast, lightweight document reader with embedded AI assistant"
-authors = [""]
+authors = ["IntelliDoc Contributors"]
+license = "MIT"
+repository = "https://github.com/Neroli1108/intellidoc_reader"
 edition = "2021"
 rust-version = "1.75"
 
@@ -11,13 +13,13 @@ name = "intellidoc_reader_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri Framework
-tauri = { version = "2.0", features = ["shell-open"] }
-tauri-plugin-dialog = "2.0"
-tauri-plugin-fs = "2.0"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -27,13 +29,16 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 
 # Document Parsing
-# pdfium-render = "0.8"      # PDF rendering (uncomment when implementing)
-# epub = "2.1"               # EPUB parsing
-# docx-rs = "0.4"            # DOCX parsing
-pulldown-cmark = "0.10"      # Markdown parsing
+pdf-extract = "0.7"             # PDF text extraction
+pulldown-cmark = "0.10"         # Markdown parsing
+tempfile = "3"                  # Temporary files for OCR pipeline
 
-# LLM Integration
-# llama-cpp-2 = "0.1"        # llama.cpp bindings (uncomment when implementing)
+# Environment variables
+dotenvy = "0.15"
+
+# LLM Integration — AWS Bedrock
+aws-config = "1"
+aws-sdk-bedrockruntime = "1"
 
 # Storage
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -41,19 +46,16 @@ uuid = { version = "1.7", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Utilities
-sha2 = "0.10"                # Document hashing
-thiserror = "1.0"            # Error handling
-tracing = "0.1"              # Logging
+sha2 = "0.10"                   # Document hashing
+thiserror = "1.0"               # Error handling
+tracing = "0.1"                 # Logging
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-directories = "5.0"          # Platform-specific directories
+directories = "5.0"             # Platform-specific directories
 
 # HTTP client for external LLM APIs
-reqwest = { version = "0.11", features = ["json"] }
-async-trait = "0.1"          # Async trait support
-
-# PDF editing (uncomment when implementing)
-# lopdf = "0.31"             # PDF manipulation
-# image = "0.24"             # Image processing
+reqwest = { version = "0.12", features = ["json"] }
+async-trait = "0.1"             # Async trait support
+regex = "1"                     # Regex for voice command parsing
 
 [features]
 default = ["custom-protocol"]

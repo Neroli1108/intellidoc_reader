@@ -12,7 +12,7 @@ use crate::document::editor::{
 use crate::document::DocumentType;
 use crate::error::AppError;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 // ============================================================================
@@ -83,7 +83,7 @@ pub async fn open_editor(
     path: String,
 ) -> Result<String, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     if editors.contains_key(&document_id) {
         return Ok("already_open".to_string());
@@ -134,7 +134,7 @@ pub async fn open_editor(
 #[tauri::command]
 pub async fn close_editor(app: AppHandle, document_id: String) -> Result<(), AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
     editors.remove(&document_id);
     Ok(())
 }
@@ -143,7 +143,7 @@ pub async fn close_editor(app: AppHandle, document_id: String) -> Result<(), App
 #[tauri::command]
 pub async fn has_unsaved_changes(app: AppHandle, document_id: String) -> Result<bool, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -156,7 +156,7 @@ pub async fn has_unsaved_changes(app: AppHandle, document_id: String) -> Result<
 #[tauri::command]
 pub async fn get_operation_count(app: AppHandle, document_id: String) -> Result<usize, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -169,7 +169,7 @@ pub async fn get_operation_count(app: AppHandle, document_id: String) -> Result<
 #[tauri::command]
 pub async fn undo_operation(app: AppHandle, document_id: String) -> Result<bool, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -182,7 +182,7 @@ pub async fn undo_operation(app: AppHandle, document_id: String) -> Result<bool,
 #[tauri::command]
 pub async fn redo_operation(app: AppHandle, document_id: String) -> Result<bool, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -195,7 +195,7 @@ pub async fn redo_operation(app: AppHandle, document_id: String) -> Result<bool,
 #[tauri::command]
 pub async fn clear_operations(app: AppHandle, document_id: String) -> Result<(), AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -213,7 +213,7 @@ pub async fn save_document(
     output_path: Option<String>,
 ) -> Result<String, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -248,7 +248,7 @@ pub async fn add_pdf_operation(
     operation: PDFEditOperation,
 ) -> Result<EditOperationInfo, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -274,7 +274,7 @@ pub async fn get_pdf_operations(
     document_id: String,
 ) -> Result<Vec<EditOperationInfo>, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -308,7 +308,7 @@ pub async fn add_text_operation(
     operation: TextEditOperation,
 ) -> Result<EditOperationInfo, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -331,7 +331,7 @@ pub async fn add_text_operation(
 #[tauri::command]
 pub async fn get_text_content(app: AppHandle, document_id: String) -> Result<String, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -355,7 +355,7 @@ pub async fn set_text_content(
     content: String,
 ) -> Result<(), AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -377,7 +377,7 @@ pub async fn set_text_content(
 #[tauri::command]
 pub async fn get_word_stats(app: AppHandle, document_id: String) -> Result<WordStats, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -399,7 +399,7 @@ pub async fn render_markdown_preview(
     document_id: String,
 ) -> Result<String, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -426,7 +426,7 @@ pub async fn add_docx_operation(
     operation: DOCXEditOperation,
 ) -> Result<EditOperationInfo, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -457,7 +457,7 @@ pub async fn add_latex_operation(
     operation: LaTeXEditOperation,
 ) -> Result<EditOperationInfo, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -484,7 +484,7 @@ pub async fn get_latex_completions(
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
     let manager = app.state::<EditorManager>();
-    let editors = manager.editors.lock().unwrap();
+    let editors = manager.editors.lock().await;
 
     let editor = editors
         .get(&document_id)
@@ -511,7 +511,7 @@ pub async fn add_epub_operation(
     operation: EPUBEditOperation,
 ) -> Result<EditOperationInfo, AppError> {
     let manager = app.state::<EditorManager>();
-    let mut editors = manager.editors.lock().unwrap();
+    let mut editors = manager.editors.lock().await;
 
     let editor = editors
         .get_mut(&document_id)
@@ -662,4 +662,76 @@ pub async fn convert_txt_to_markdown(input: String, output: String) -> Result<()
         .await
         .map_err(|e| crate::error::DocumentError::ParseError(e.to_string()))?;
     Ok(())
+}
+
+/// Compile content to PDF (using LaTeX or pdflatex)
+#[tauri::command]
+pub async fn compile_to_pdf(content: String, output_path: String) -> Result<(), AppError> {
+    use std::fs;
+    use std::process::Command;
+
+    // Create a temporary .tex file
+    let temp_dir = std::env::temp_dir();
+    let tex_file = temp_dir.join("intellidoc_compile.tex");
+    let pdf_file = temp_dir.join("intellidoc_compile.pdf");
+
+    // Wrap content in basic LaTeX document if not already a full document
+    let full_content = if content.contains("\\documentclass") {
+        content
+    } else {
+        format!(
+            r#"\documentclass{{article}}
+\usepackage{{amsmath}}
+\usepackage{{amssymb}}
+\usepackage{{graphicx}}
+\usepackage[utf8]{{inputenc}}
+\begin{{document}}
+{}
+\end{{document}}"#,
+            content
+        )
+    };
+
+    // Write the tex file
+    fs::write(&tex_file, &full_content)
+        .map_err(|e| crate::error::DocumentError::ParseError(format!("Failed to write temp file: {}", e)))?;
+
+    // Try to compile with pdflatex
+    let output = Command::new("pdflatex")
+        .args([
+            "-interaction=nonstopmode",
+            "-output-directory",
+            temp_dir.to_str().unwrap_or("/tmp"),
+            tex_file.to_str().unwrap_or(""),
+        ])
+        .output();
+
+    match output {
+        Ok(result) => {
+            if result.status.success() && pdf_file.exists() {
+                // Copy to output path
+                fs::copy(&pdf_file, &output_path)
+                    .map_err(|e| crate::error::DocumentError::ParseError(format!("Failed to copy PDF: {}", e)))?;
+
+                // Cleanup temp files
+                let _ = fs::remove_file(&tex_file);
+                let _ = fs::remove_file(&pdf_file);
+                let _ = fs::remove_file(temp_dir.join("intellidoc_compile.aux"));
+                let _ = fs::remove_file(temp_dir.join("intellidoc_compile.log"));
+
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                Err(crate::error::DocumentError::ParseError(
+                    format!("LaTeX compilation failed: {}\n{}", stderr, stdout)
+                ).into())
+            }
+        }
+        Err(e) => {
+            Err(crate::error::DocumentError::ParseError(
+                format!("pdflatex not found. Please install LaTeX (e.g., MacTeX on macOS). Error: {}", e)
+            ).into())
+        }
+    }
 }

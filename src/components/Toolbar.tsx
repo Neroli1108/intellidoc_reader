@@ -1,5 +1,6 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  Menu,
   Moon,
   Sun,
   FolderOpen,
@@ -9,16 +10,26 @@ import {
   PanelRightClose,
   Settings,
   FileText,
-  Edit3,
   Bot,
+  Terminal,
 } from "lucide-react";
+import { useSettingsStore } from "../stores/settingsStore";
+import { useEditorStore } from "../stores/editorStore";
+import { VimModeIndicatorCompact } from "./editor/VimModeIndicator";
+
+const MODEL_OPTIONS = [
+  { id: "gpt-4o-mini", label: "GPT-4o Mini" },
+  { id: "gpt-4o", label: "GPT-4o" },
+  { id: "gpt-5", label: "GPT-5" },
+  { id: "gpt-5.1", label: "GPT-5.1" },
+  { id: "gpt-5.2", label: "GPT-5.2" },
+];
 
 interface ToolbarProps {
   onOpenDocument: () => void;
   onToggleTheme: () => void;
   onToggleSidebar: () => void;
   onToggleChat: () => void;
-  onOpenEditor?: () => void;
   onOpenLLMSettings?: () => void;
   theme: "light" | "dark";
   hasDocument: boolean;
@@ -29,11 +40,27 @@ export function Toolbar({
   onToggleTheme,
   onToggleSidebar,
   onToggleChat,
-  onOpenEditor,
   onOpenLLMSettings,
   theme,
   hasDocument,
 }: ToolbarProps) {
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
+  const { vimModeEnabled, toggleVimMode } = useSettingsStore();
+  const vimMode = useEditorStore((state) => state.vimMode);
+
+  const handleModelChange = async (model: string) => {
+    setSelectedModel(model);
+    try {
+      await invoke("set_llm_config", {
+        provider: "openai",
+        model,
+        apiKey: null,
+        apiUrl: null,
+      });
+    } catch (error) {
+      console.error("Failed to set model:", error);
+    }
+  };
   return (
     <header className="h-12 px-4 flex items-center justify-between bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 drag-region">
       {/* Left section */}
@@ -68,19 +95,6 @@ export function Toolbar({
           </span>
         </button>
 
-        <div className="w-px h-6 bg-stone-200 dark:bg-stone-700 mx-1" />
-
-        <button
-          onClick={onOpenEditor}
-          disabled={!hasDocument}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Edit PDF"
-        >
-          <Edit3 className="w-4 h-4 text-stone-600 dark:text-stone-400" />
-          <span className="text-sm font-medium text-stone-700 dark:text-stone-300">
-            Edit
-          </span>
-        </button>
       </div>
 
       {/* Center - Title */}
@@ -104,6 +118,20 @@ export function Toolbar({
         </div>
 
         <div className="w-px h-6 bg-stone-200 dark:bg-stone-700 mx-1" />
+
+        {/* Vim Mode Toggle */}
+        <button
+          onClick={toggleVimMode}
+          className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${
+            vimModeEnabled
+              ? "bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400"
+              : "hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-400"
+          }`}
+          title={vimModeEnabled ? "Disable Vim Mode" : "Enable Vim Mode"}
+        >
+          <Terminal className="w-5 h-5" />
+          {vimModeEnabled && <VimModeIndicatorCompact mode={vimMode} />}
+        </button>
 
         <button
           onClick={onToggleTheme}
@@ -132,6 +160,20 @@ export function Toolbar({
         >
           <Bot className="w-5 h-5 text-stone-600 dark:text-stone-400" />
         </button>
+
+        {/* Model selector dropdown */}
+        <select
+          value={selectedModel}
+          onChange={(e) => handleModelChange(e.target.value)}
+          className="px-2 py-1.5 text-sm rounded-lg bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          title="Select AI Model"
+        >
+          {MODEL_OPTIONS.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.label}
+            </option>
+          ))}
+        </select>
 
         <button
           className="p-2 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"

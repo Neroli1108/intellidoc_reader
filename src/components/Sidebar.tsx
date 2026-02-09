@@ -7,11 +7,20 @@ import {
   Calendar,
   Hash,
   Tag,
-  X,
-  Cpu,
   BookOpen,
   StickyNote,
+  X,
+  Highlighter,
+  Underline,
+  Strikethrough,
+  MessageSquare,
+  Palette,
 } from "lucide-react";
+import { useAnnotationStore } from "../stores/annotationStore";
+import type { PDFAnnotation } from "../stores/annotationStore";
+import { useCategoryStore } from "../stores/categoryStore";
+import { invoke } from "@tauri-apps/api/core";
+import { HighlightLegend } from "./highlights";
 
 interface Document {
   id: string;
@@ -45,8 +54,8 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-export function Sidebar({ document, onClose }: SidebarProps) {
-  const [activeTab, setActiveTab] = useState<"outline" | "metadata" | "notes">(
+export function Sidebar({ document, onClose: _onClose }: SidebarProps) {
+  const [activeTab, setActiveTab] = useState<"outline" | "metadata" | "notes" | "legend">(
     "outline"
   );
 
@@ -87,6 +96,17 @@ export function Sidebar({ document, onClose }: SidebarProps) {
           <StickyNote className="w-4 h-4 inline mr-1.5" />
           Notes
         </button>
+        <button
+          onClick={() => setActiveTab("legend")}
+          className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${
+            activeTab === "legend"
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400"
+              : "text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200"
+          }`}
+        >
+          <Palette className="w-4 h-4 inline mr-1.5" />
+          Legend
+        </button>
       </div>
 
       {/* Content */}
@@ -100,20 +120,13 @@ export function Sidebar({ document, onClose }: SidebarProps) {
           <OutlineView document={document} />
         ) : activeTab === "metadata" ? (
           <MetadataView document={document} />
+        ) : activeTab === "legend" ? (
+          <HighlightLegend />
         ) : (
           <NotesView document={document} />
         )}
       </div>
 
-      {/* Code Generation Button (for CS papers) */}
-      {document && document.category === "computerscience" && (
-        <div className="p-4 border-t border-stone-200 dark:border-stone-800">
-          <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg font-medium transition-all shadow-md hover:shadow-lg">
-            <Cpu className="w-4 h-4" />
-            Generate Code
-          </button>
-        </div>
-      )}
     </aside>
   );
 }
@@ -330,16 +343,159 @@ function MetadataView({ document }: { document: Document }) {
   );
 }
 
-// Notes list view
-function NotesView({ document }: { document: Document }) {
-  // This would show all annotations/notes for the document
+// Highlight color helper - now uses category store
+function getAnnotationColor(annotation: PDFAnnotation): string {
+  const { getCategoryById } = useCategoryStore.getState();
+  if (annotation.categoryId) {
+    const category = getCategoryById(annotation.categoryId);
+    if (category) return category.color;
+  }
+  // Fallback to legacy color lookup
+  const legacyColors: Record<string, string> = {
+    yellow: "#FDE047",
+    green: "#4ADE80",
+    blue: "#60A5FA",
+    purple: "#C084FC",
+    red: "#F87171",
+    orange: "#FB923C",
+  };
+  return legacyColors[annotation.color] || "#FDE047";
+}
+
+function getAnnotationCategoryName(annotation: PDFAnnotation): string | null {
+  const { getCategoryById } = useCategoryStore.getState();
+  if (annotation.categoryId) {
+    const category = getCategoryById(annotation.categoryId);
+    if (category) return category.name;
+  }
+  return null;
+}
+
+function getTypeIcon(type: PDFAnnotation["type"], hasNote?: boolean) {
+  if (hasNote) return <MessageSquare className="w-3 h-3" />;
+  switch (type) {
+    case "highlight": return <Highlighter className="w-3 h-3" />;
+    case "underline": return <Underline className="w-3 h-3" />;
+    case "strikethrough": return <Strikethrough className="w-3 h-3" />;
+  }
+}
+
+function getTypeLabel(type: PDFAnnotation["type"], hasNote?: boolean) {
+  if (hasNote) return "Note";
+  switch (type) {
+    case "highlight": return "Highlight";
+    case "underline": return "Underline";
+    case "strikethrough": return "Strikethrough";
+  }
+}
+
+// Notes list view — uses shared annotation store
+function NotesView({ document: _document }: { document: Document }) {
+  const {
+    pdfAnnotations,
+    removeAnnotation,
+    setJumpTarget,
+    selectedAnnotationId,
+    setSelectedAnnotationId,
+  } = useAnnotationStore();
+
+  const handleClick = (annotation: PDFAnnotation) => {
+    // Only set jumpTarget - DocumentViewer will handle deselecting the previous
+    // and setting selectedAnnotationId after the visual deselection is done
+    setJumpTarget(annotation);
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try { await invoke("delete_annotation", { id }); } catch {}
+
+    // Remove visual annotation from DOM
+    const spans = globalThis.document.querySelectorAll(`[data-annotation-id="${id}"]`);
+    spans.forEach(span => {
+      (span as HTMLElement).style.backgroundColor = "";
+      (span as HTMLElement).style.borderBottom = "";
+      (span as HTMLElement).style.backgroundImage = "";
+      (span as HTMLElement).style.borderRadius = "";
+      (span as HTMLElement).style.outline = "";
+      (span as HTMLElement).style.outlineOffset = "";
+      span.removeAttribute("data-annotation-id");
+      span.removeAttribute("data-annotation-type");
+    });
+
+    removeAnnotation(id);
+    if (selectedAnnotationId === id) {
+      setSelectedAnnotationId(null);
+    }
+  };
+
+  if (pdfAnnotations.length === 0) {
+    return (
+      <div className="text-center text-stone-400 dark:text-stone-500 py-8">
+        <StickyNote className="w-12 h-12 mx-auto mb-3 opacity-50" />
+        <p className="text-sm mb-2">No annotations yet</p>
+        <p className="text-xs">
+          Select text in the document to add highlights or underlines.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="text-center text-stone-400 dark:text-stone-500 py-8">
-      <StickyNote className="w-12 h-12 mx-auto mb-3 opacity-50" />
-      <p className="text-sm mb-2">No notes yet</p>
-      <p className="text-xs">
-        Select text in the document to add highlights and notes
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase font-semibold tracking-wider text-stone-400 dark:text-stone-500 mb-2">
+        {pdfAnnotations.length} annotation{pdfAnnotations.length !== 1 ? "s" : ""}
       </p>
+      {pdfAnnotations.map((a) => {
+        const isSelected = selectedAnnotationId === a.id;
+        const hasNote = !!a.note;
+        const categoryName = getAnnotationCategoryName(a);
+        const annotationColor = a.type === "highlight"
+          ? getAnnotationColor(a)
+          : a.type === "underline"
+            ? "#6366f1"
+            : "#ef4444";
+        return (
+          <div
+            key={a.id}
+            onClick={() => handleClick(a)}
+            className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all hover:shadow-md active:scale-[0.98] border-l-4 ${
+              isSelected
+                ? "bg-indigo-50 dark:bg-indigo-950/30 ring-2 ring-indigo-400 dark:ring-indigo-500"
+                : hasNote
+                  ? "bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                  : "bg-stone-50 dark:bg-stone-800/50 hover:bg-stone-100 dark:hover:bg-stone-800"
+            }`}
+            style={{
+              borderLeftColor: annotationColor,
+            }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider text-stone-400 dark:text-stone-500">
+                {getTypeIcon(a.type, hasNote)}
+                {categoryName || getTypeLabel(a.type, hasNote)} · p.{a.pageNum}
+              </span>
+              <button
+                onClick={(e) => handleDelete(e, a.id)}
+                className="text-stone-300 hover:text-red-500 transition-colors p-0.5"
+                title="Remove"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <p className="text-stone-700 dark:text-stone-300 italic line-clamp-2 leading-relaxed">
+              &ldquo;{a.text}&rdquo;
+            </p>
+            {hasNote && (
+              <p className="text-stone-900 dark:text-stone-100 mt-1.5 leading-relaxed font-medium bg-white/50 dark:bg-stone-900/50 p-1.5 rounded">
+                {a.note}
+              </p>
+            )}
+            <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-1">
+              {isSelected ? "Selected" : "Click to jump"}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 //! Document parsing and management module
 
 pub mod editor;
+pub mod ocr;
 pub mod parser;
 
 // Re-export editor types

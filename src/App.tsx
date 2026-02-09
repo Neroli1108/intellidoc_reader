@@ -6,7 +6,6 @@ import { DocumentViewer } from "./components/DocumentViewer";
 import { ChatPanel } from "./components/ChatPanel";
 import { Toolbar } from "./components/Toolbar";
 import { LLMSettings } from "./components/LLMSettings";
-import { PDFEditor } from "./components/PDFEditor";
 import { useDocumentStore } from "./stores/documentStore";
 import { useSettingsStore } from "./stores/settingsStore";
 
@@ -17,7 +16,6 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState(false);
-  const [isPDFEditorOpen, setIsPDFEditorOpen] = useState(false);
 
   // Apply theme class to document
   useEffect(() => {
@@ -61,7 +59,6 @@ function App() {
         onToggleTheme={toggleTheme}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         onToggleChat={() => setIsChatOpen(!isChatOpen)}
-        onOpenEditor={() => setIsPDFEditorOpen(true)}
         onOpenLLMSettings={() => setIsLLMSettingsOpen(true)}
         theme={theme}
         hasDocument={!!currentDocument}
@@ -106,15 +103,6 @@ function App() {
         isOpen={isLLMSettingsOpen}
         onClose={() => setIsLLMSettingsOpen(false)}
       />
-
-      {/* PDF Editor (Full Screen) */}
-      {isPDFEditorOpen && currentDocument && (
-        <PDFEditor
-          documentId={currentDocument.id}
-          documentPath={currentDocument.path}
-          onClose={() => setIsPDFEditorOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -177,11 +165,33 @@ function WelcomeScreen({ onOpenDocument }: { onOpenDocument: () => void }) {
 
 // Status bar at the bottom
 function StatusBar({ document }: { document: Document | null }) {
+  const [llmStatus, setLlmStatus] = useState<{
+    loaded: boolean;
+    model_name: string | null;
+  }>({ loaded: false, model_name: null });
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const status = await invoke<{
+          loaded: boolean;
+          model_name: string | null;
+        }>("get_model_status");
+        setLlmStatus(status);
+      } catch {
+        setLlmStatus({ loaded: false, model_name: null });
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="h-6 px-4 flex items-center justify-between bg-stone-100 dark:bg-stone-900 border-t border-stone-200 dark:border-stone-800 text-xs text-stone-500 dark:text-stone-500">
       <div className="flex items-center gap-4">
         <span>
-          {document ? `📄 ${document.title}` : "No document open"}
+          {document ? document.title : "No document open"}
         </span>
         {document && (
           <>
@@ -194,8 +204,16 @@ function StatusBar({ document }: { document: Document | null }) {
       </div>
       <div className="flex items-center gap-4">
         <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          LLM: Loading...
+          <span
+            className={`w-2 h-2 rounded-full ${
+              llmStatus.loaded
+                ? "bg-emerald-500"
+                : "bg-amber-500 animate-pulse"
+            }`}
+          />
+          {llmStatus.loaded
+            ? `LLM: ${llmStatus.model_name || "Ready"}`
+            : "LLM: Not configured"}
         </span>
       </div>
     </div>

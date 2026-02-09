@@ -14,7 +14,6 @@ import {
   FileInput,
   Scissors,
   Merge,
-  FileOutput,
   Undo2,
   Redo2,
   Save,

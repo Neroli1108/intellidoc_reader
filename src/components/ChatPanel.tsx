@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   X,
   Send,
@@ -12,12 +11,15 @@ import {
   Loader2,
   Copy,
   Check,
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
+  AlertCircle,
 } from "lucide-react";
-import { useVoiceReadingStore } from "../stores/voiceReadingStore";
+import { CodePanel } from "./CodePanel";
+import {
+  AISchemePreview,
+  parseHighlightScheme,
+  isSchemeCommand,
+  ParsedCategory,
+} from "./highlights";
 
 interface Document {
   id: string;
@@ -37,7 +39,7 @@ interface ChatPanelProps {
 
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "error";
   content: string;
   timestamp: Date;
   mode?: "quick" | "explain" | "code";
@@ -45,19 +47,96 @@ interface ChatMessage {
 
 type QueryMode = "quick_answer" | "explain" | "summarize" | "generate_code";
 
+// Tech categories that can benefit from code generation
+const TECH_CATEGORIES = [
+  "computerscience",
+  "engineering",
+  "mathematics",
+  "physics",
+];
+
+function isTechPaper(document: Document): boolean {
+  // Check category
+  if (TECH_CATEGORIES.includes(document.category)) return true;
+
+  // Also check content for tech indicators even if category is "unknown"
+  const sampleText = document.pages
+    .slice(0, 3)
+    .map((p) => p.text)
+    .join(" ")
+    .toLowerCase();
+
+  const techKeywords = [
+    "algorithm",
+    "implementation",
+    "source code",
+    "pseudocode",
+    "neural network",
+    "machine learning",
+    "deep learning",
+    "transformer",
+    "pytorch",
+    "tensorflow",
+    "python",
+    "function",
+    "class",
+    "def ",
+    "import ",
+    "compute",
+    "optimization",
+    "complexity",
+    "O(n",
+    "runtime",
+    "software",
+    "framework",
+    "architecture",
+    "API",
+    "database",
+    "model training",
+    "inference",
+    "GPU",
+    "CPU",
+    "parallel",
+    "distributed",
+    "reinforcement learning",
+    "classification",
+    "regression",
+    "embedding",
+    "encoder",
+    "decoder",
+    "convolution",
+    "recurrent",
+    "attention mechanism",
+    "loss function",
+    "gradient",
+    "backpropagation",
+    "dataset",
+  ];
+
+  const matchCount = techKeywords.filter((kw) =>
+    sampleText.includes(kw.toLowerCase())
+  ).length;
+  return matchCount >= 3;
+}
+
 export function ChatPanel({ document, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState<"quick" | "explain">("explain");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [speakResponses, setSpeakResponses] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Voice reading store for pausing during Q&A
-  const { status: readingStatus, pauseReading, resumeReading } = useVoiceReadingStore();
+  // Code panel state
+  const [codePanelOpen, setCodePanelOpen] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState("");
+  const [codeLanguage, setCodeLanguage] = useState("python");
+
+  // AI scheme generator state
+  const [schemePreview, setSchemePreview] = useState<ParsedCategory[] | null>(null);
+
+  const showCodeGen = isTechPaper(document);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -69,98 +148,39 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
     inputRef.current?.focus();
   }, []);
 
-  // Listen for voice transcription events
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    const setup = async () => {
-      unlisten = await listen<{ text: string; is_final: boolean }>(
-        "voice:transcription",
-        (event) => {
-          if (event.payload.is_final && event.payload.text.trim()) {
-            setInput((prev) => prev + event.payload.text + " ");
-          }
-        }
-      );
-    };
-
-    if (isListening) {
-      setup();
-    }
-
-    return () => {
-      unlisten?.();
-    };
-  }, [isListening]);
-
-  // Toggle voice listening
-  const toggleVoiceListening = async () => {
-    if (isListening) {
-      // Stop listening
-      try {
-        await invoke("stop_voice_listening");
-      } catch (error) {
-        console.error("Failed to stop listening:", error);
-      }
-      setIsListening(false);
-    } else {
-      // Pause reading if in progress
-      if (readingStatus === "playing") {
-        await pauseReading();
-      }
-      
-      // Start listening
-      try {
-        await invoke("start_voice_listening", {
-          sessionId: `chat-${Date.now()}`,
-        });
-        setIsListening(true);
-      } catch (error) {
-        console.error("Failed to start listening:", error);
-      }
-    }
-  };
-
-  // Speak text using TTS
-  const speakText = async (text: string) => {
-    if (!speakResponses) return;
-    
-    try {
-      // Strip markdown formatting for cleaner speech
-      const cleanText = text
-        .replace(/\*\*/g, "")
-        .replace(/```[\s\S]*?```/g, "code block")
-        .replace(/`[^`]*`/g, "code");
-      
-      await invoke("speak_text", { text: cleanText });
-    } catch (error) {
-      console.error("Failed to speak:", error);
-    }
-  };
-
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    // Stop listening if active
-    if (isListening) {
-      await toggleVoiceListening();
-    }
-
-    // Pause reading during Q&A
-    const wasReading = readingStatus === "playing";
-    if (wasReading) {
-      await pauseReading();
-    }
+    const userInput = input.trim();
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: userInput,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    // Check if this is a highlight scheme command
+    if (isSchemeCommand(userInput)) {
+      const parsed = parseHighlightScheme(userInput);
+      if (parsed.length > 0) {
+        // Show the parsed scheme for preview
+        setSchemePreview(parsed);
+
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `I've parsed ${parsed.length} categor${parsed.length === 1 ? "y" : "ies"} from your input. Review and edit them below, then click Apply to add them to your highlight categories.`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     try {
@@ -170,7 +190,8 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
         .map((p) => p.text)
         .join("\n\n");
 
-      const queryMode: QueryMode = mode === "explain" ? "explain" : "quick_answer";
+      const queryMode: QueryMode =
+        mode === "explain" ? "explain" : "quick_answer";
 
       const response = await invoke<{ answer: string }>("query_llm", {
         question: userMessage.content,
@@ -187,20 +208,21 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-
-      // Speak the response
-      await speakText(response.answer);
-
-      // Resume reading after response if it was playing before
-      if (wasReading) {
-        await resumeReading();
-      }
     } catch (error) {
       console.error("Failed to query LLM:", error);
+
+      // Show the actual error details to help diagnose the issue
+      const errorDetail =
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : JSON.stringify(error);
+
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, I encountered an error processing your request. Please try again.",
+        role: "error",
+        content: `LLM Error: ${errorDetail}\n\nPlease check your LLM configuration in Settings (gear icon in toolbar).`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -223,9 +245,20 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
   };
 
   const handleGenerateCode = async () => {
-    if (document.category !== "computerscience") return;
+    if (!showCodeGen) return;
 
     setIsLoading(true);
+
+    // Add a status message to chat
+    const statusMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "assistant",
+      content: "Generating code implementation...",
+      timestamp: new Date(),
+      mode: "code",
+    };
+    setMessages((prev) => [...prev, statusMsg]);
+
     try {
       const context = document.pages.map((p) => p.text).join("\n\n");
 
@@ -233,26 +266,53 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
         "generate_code",
         {
           request: {
-            description: document.title,
-            context,
+            description: `Implement the key algorithm/method described in: ${document.title}`,
+            context: context.slice(0, 8000),
             language: "python",
-            framework: "pytorch",
+            framework: null,
             section_reference: null,
           },
         }
       );
 
-      const codeMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: `**Generated Code Implementation**\n\n\`\`\`python\n${response.code}\n\`\`\``,
-        timestamp: new Date(),
-        mode: "code",
-      };
+      // Update the status message
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === statusMsg.id
+            ? {
+                ...m,
+                content:
+                  "Code generated successfully! Click the button below to view it with line-by-line explanations.",
+              }
+            : m
+        )
+      );
 
-      setMessages((prev) => [...prev, codeMessage]);
+      // Open the code panel
+      setGeneratedCode(response.code);
+      setCodeLanguage("python");
+      setCodePanelOpen(true);
     } catch (error) {
       console.error("Failed to generate code:", error);
+      const errorDetail =
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : JSON.stringify(error);
+
+      // Update the status message to show error
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === statusMsg.id
+            ? {
+                ...m,
+                role: "error" as const,
+                content: `Code generation failed: ${errorDetail}\n\nCheck your LLM configuration.`,
+              }
+            : m
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +381,9 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
             </p>
             <div className="space-y-2">
               <SuggestionButton
-                onClick={() => setInput("What is the main contribution of this paper?")}
+                onClick={() =>
+                  setInput("What is the main contribution of this paper?")
+                }
                 icon={<FileText className="w-4 h-4" />}
               >
                 Main contribution
@@ -332,7 +394,7 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
               >
                 Explain methodology
               </SuggestionButton>
-              {document.category === "computerscience" && (
+              {showCodeGen && (
                 <SuggestionButton
                   onClick={handleGenerateCode}
                   icon={<Code className="w-4 h-4" />}
@@ -343,38 +405,101 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${
-                message.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
+          <>
+            {messages.map((message) => (
               <div
-                className={`relative group ${
-                  message.role === "user"
-                    ? "chat-bubble-user"
-                    : "chat-bubble-assistant"
+                key={message.id}
+                className={`flex ${
+                  message.role === "user" ? "justify-end" : "justify-start"
                 }`}
               >
-                {message.role === "assistant" && (
-                  <button
-                    onClick={() => copyToClipboard(message.content, message.id)}
-                    className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-stone-200 dark:hover:bg-stone-700 transition-all"
-                  >
-                    {copiedId === message.id ? (
-                      <Check className="w-3.5 h-3.5 text-green-500" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5 text-stone-400" />
-                    )}
-                  </button>
-                )}
-                <div className="text-sm whitespace-pre-wrap">
-                  {formatMessage(message.content)}
+                <div
+                  className={`relative group ${
+                    message.role === "user"
+                      ? "chat-bubble-user"
+                      : message.role === "error"
+                        ? "max-w-[90%] p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+                        : "chat-bubble-assistant"
+                  }`}
+                >
+                  {message.role === "error" && (
+                    <div className="flex items-center gap-1.5 mb-1.5 text-red-500">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="text-xs font-medium">Error</span>
+                    </div>
+                  )}
+                  {message.role === "assistant" && (
+                    <button
+                      onClick={() =>
+                        copyToClipboard(message.content, message.id)
+                      }
+                      className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-stone-200 dark:hover:bg-stone-700 transition-all"
+                    >
+                      {copiedId === message.id ? (
+                        <Check className="w-3.5 h-3.5 text-green-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-stone-400" />
+                      )}
+                    </button>
+                  )}
+                  <div className="text-sm whitespace-pre-wrap">
+                    {formatMessage(message.content)}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            ))}
+
+            {/* AI Scheme Preview */}
+            {schemePreview && (
+              <AISchemePreview
+                categories={schemePreview}
+                onApply={() => {
+                  setSchemePreview(null);
+                  const confirmMessage: ChatMessage = {
+                    id: Date.now().toString(),
+                    role: "assistant",
+                    content: `Added ${schemePreview.length} new categor${schemePreview.length === 1 ? "y" : "ies"} to your highlight palette. You can now use them when selecting text!`,
+                    timestamp: new Date(),
+                  };
+                  setMessages((prev) => [...prev, confirmMessage]);
+                }}
+                onCancel={() => setSchemePreview(null)}
+                onUpdate={(index, updates) => {
+                  setSchemePreview((prev) =>
+                    prev
+                      ? prev.map((cat, i) =>
+                          i === index ? { ...cat, ...updates } : cat
+                        )
+                      : null
+                  );
+                }}
+              />
+            )}
+
+            {/* Quick action buttons below messages */}
+            {!isLoading && !schemePreview && (
+              <div className="flex justify-center gap-2 pt-2">
+                {showCodeGen && (
+                  <button
+                    onClick={handleGenerateCode}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors"
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    Generate Code
+                  </button>
+                )}
+                {generatedCode && (
+                  <button
+                    onClick={() => setCodePanelOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    View Code
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
         {isLoading && (
           <div className="flex justify-start">
@@ -389,52 +514,13 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
 
       {/* Input */}
       <div className="p-4 border-t border-stone-200 dark:border-stone-800">
-        {/* Voice controls */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleVoiceListening}
-              className={`p-2 rounded-lg transition-colors ${
-                isListening
-                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
-                  : "bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-400"
-              }`}
-              title={isListening ? "Stop listening" : "Start voice input"}
-            >
-              {isListening ? (
-                <MicOff className="w-4 h-4" />
-              ) : (
-                <Mic className="w-4 h-4" />
-              )}
-            </button>
-            {isListening && (
-              <span className="text-xs text-red-500 font-medium">Listening...</span>
-            )}
-          </div>
-          <button
-            onClick={() => setSpeakResponses(!speakResponses)}
-            className={`p-2 rounded-lg transition-colors ${
-              speakResponses
-                ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-400"
-            }`}
-            title={speakResponses ? "Voice responses on" : "Voice responses off"}
-          >
-            {speakResponses ? (
-              <Volume2 className="w-4 h-4" />
-            ) : (
-              <VolumeX className="w-4 h-4" />
-            )}
-          </button>
-        </div>
-
         <div className="relative">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Speak your question..." : "Ask about the document..."}
+            placeholder="Ask about the document..."
             rows={2}
             className="w-full px-4 py-3 pr-12 text-sm rounded-xl bg-stone-100 dark:bg-stone-800 border border-transparent focus:border-indigo-500 focus:bg-white dark:focus:bg-stone-900 outline-none resize-none transition-all"
           />
@@ -447,9 +533,21 @@ export function ChatPanel({ document, onClose }: ChatPanelProps) {
           </button>
         </div>
         <p className="mt-2 text-xs text-stone-400 dark:text-stone-500 text-center">
-          {isListening ? "Speak or type your question" : "Press Enter to send, Shift+Enter for new line"}
+          Press Enter to send, Shift+Enter for new line
         </p>
       </div>
+      {/* Code Panel */}
+      <CodePanel
+        isOpen={codePanelOpen}
+        code={generatedCode}
+        language={codeLanguage}
+        title={document.title}
+        documentContext={document.pages
+          .slice(0, 3)
+          .map((p) => p.text)
+          .join("\n\n")}
+        onClose={() => setCodePanelOpen(false)}
+      />
     </aside>
   );
 }

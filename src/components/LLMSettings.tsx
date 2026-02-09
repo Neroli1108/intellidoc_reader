@@ -49,9 +49,10 @@ export function LLMSettings({ isOpen, onClose }: LLMSettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
 
-  // Load providers on mount
+  // Load providers and current config on mount
   useEffect(() => {
     loadProviders();
+    loadCurrentConfig();
   }, []);
 
   // Load models when provider changes
@@ -60,6 +61,21 @@ export function LLMSettings({ isOpen, onClose }: LLMSettingsProps) {
       loadModels(selectedProvider);
     }
   }, [selectedProvider]);
+
+  const loadCurrentConfig = async () => {
+    try {
+      const config = await invoke<{
+        provider: string;
+        config: { model: string; api_key: string | null };
+      }>("get_llm_config");
+      if (config) {
+        setSelectedProvider(config.provider);
+        setSelectedModel(config.config.model);
+      }
+    } catch (error) {
+      console.error("Failed to load current LLM config:", error);
+    }
+  };
 
   const loadProviders = async () => {
     try {
@@ -107,13 +123,17 @@ export function LLMSettings({ isOpen, onClose }: LLMSettingsProps) {
   const handleTestConnection = async () => {
     setTestStatus("testing");
     try {
-      // TODO: Implement actual connection test
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Save current config first
+      await handleSave();
+      // Test the connection with a real API call
+      const result = await invoke<string>("test_llm_connection");
+      console.log("Connection test result:", result);
       setTestStatus("success");
-      setTimeout(() => setTestStatus("idle"), 3000);
+      setTimeout(() => setTestStatus("idle"), 5000);
     } catch (error) {
+      console.error("Connection test failed:", error);
       setTestStatus("error");
-      setTimeout(() => setTestStatus("idle"), 3000);
+      setTimeout(() => setTestStatus("idle"), 5000);
     }
   };
 
