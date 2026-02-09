@@ -1,0 +1,18 @@
+# Code Owners for IntelliDoc Reader
+# These owners will be requested for review on PRs
+
+# Default owner for all files
+* @Neroli1108
+
+# Frontend (React/TypeScript)
+/src/ @Neroli1108
+
+# Backend (Rust/Tauri)
+/src-tauri/ @Neroli1108
+
+# Configuration files
+/*.json @Neroli1108
+/*.toml @Neroli1108
+
+# CI/CD
+/.github/ @Neroli1108
